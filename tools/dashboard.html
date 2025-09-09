@@ -1,0 +1,203 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 10px;
+      background: #f9f9f9;
+    }
+    .full {
+        width: 100% !important;
+        height: 40% !important;
+    }
+    .twoChartsContainer {
+        width: 100% !important;
+        height: 300px !important;
+    }
+
+
+  </style>
+
+
+</head>
+<body>
+
+   <h1>Adapting at Line-Speed: A Demonstration of In-Network
+  Concept Drift Detection - Dashboard</h1>
+  <div class="full">
+    <canvas id="accuracyChart" style="height: 300px;"></canvas>
+  </div>
+  <div class="twoChartsContainer">
+    <canvas id="driftChart" style="height: 300px;"></canvas>
+    <canvas id="trafficChart" style="height: 300px;"></canvas>
+  </div>
+
+<script>
+const accuracyChart = new Chart(document.getElementById('accuracyChart').getContext('2d'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: ['Traditional ML Accuracy', 'In-Network Drift Accuracy'].map((name, i) => ({
+          label: name,
+          data: [],
+          fill: false,
+          stepped: true,
+          borderColor: ['#3e95cd', '#8e5ea2'][i],
+          pointRadius: 0,
+          tension: 0.8,
+          borderDash: i === 0 ? [2, 5] : []
+        }))  
+    },
+    options: {
+        animation: false,
+        maintainAspectRatio: false,
+        scales: {
+            x: {
+                title: {
+                    display: true,
+                    text: 'Time'
+                }
+            },
+            y: {
+                min: 0,
+                max: 110,
+                title: {
+                    display: true,
+                    text: '%'
+                }
+            }
+        }
+    }
+});
+
+const driftChart = new Chart(document.getElementById('driftChart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        datasets: [{
+          label: 'Concept Drift',
+          data: [],
+          backgroundColor: 'red',
+        barThickness: 5 
+ 
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            min: 0,
+            max: 1,
+            title: {
+                display: true,
+                text: 'No Drift____________________________Drift'
+            }
+
+          }
+        }
+      }
+    }); 
+
+ const trafficChart = new Chart(document.getElementById("trafficChart"), {
+      type: 'bar',
+      data: {
+        labels: ['Class A', 'Class B', 'Class C', 'Class D'],
+        datasets: [{
+          label: 'Traffic Count',
+          data: [0, 0, 0, 0],
+          backgroundColor: [
+            '#3e95cd',  // Blue
+            '#8e5ea2',  // Purple
+            '#3cba9f',  // Teal green
+            '#e8c3b9',  // Soft pink
+            '#c45850',  // Brick red
+            '#ffce56',  // Yellow
+            '#36a2eb',  // Sky blue
+            '#ff6384',  // Coral pink
+            '#4bc0c0'   // Cyan
+            ]
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    });
+
+const socket = new WebSocket("ws://192.168.0.71:6789");
+
+socket.onopen = () => {
+  // Subscribe to topics you want
+  socket.send(JSON.stringify({ action: "subscribe", topic: "accuracy" }));
+};
+const messageQueue = [];
+socket.onmessage = (event) => {
+  const { topic, data } = JSON.parse(event.data);
+  messageQueue.push({ topic, data });
+};
+
+
+
+// Function to add new data
+function addData(chart1, chart2, chart3, label, data) {
+    chart1.data.labels.push(label);
+    chart2.data.labels.push(label);
+    chart1.data.datasets[1].data.push(data.acc_p4);
+    chart2.data.datasets[0].data.push(data.drift);
+
+    const classDict = data.clazz; 
+    const labels = Object.keys(classDict);
+    const values = Object.values(classDict);
+
+    chart3.data.labels = labels;
+    chart3.data.datasets[0].data = values;
+
+    chart1.update();
+    chart2.update();
+    chart3.update();
+}
+
+const trimData = (chart) => {
+    if (chart.data.labels.length > 1000) {
+        chart.data.labels.shift();
+        chart.data.datasets.forEach((dataset) => {
+            dataset.data.shift();
+        });
+
+    }
+};
+
+
+// Simulate live data
+let time = 0;
+setInterval(() => {
+    if (messageQueue.length === 0) return;
+    const batch = messageQueue.splice(0, messageQueue.length);
+
+  for (const msg of batch) {
+    const { topic, data } = msg;
+    if (topic === "accuracy") {
+        
+        addData(accuracyChart, driftChart, trafficChart, data.index, data);
+        trimData(accuracyChart);
+        trimData(driftChart);
+        trimData(trafficChart);
+         
+    }
+   
+  }
+}, 10);
+
+</script>
+
+</body>
+</html>
